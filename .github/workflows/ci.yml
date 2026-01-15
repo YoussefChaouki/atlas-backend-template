@@ -2,32 +2,71 @@ name: CI Pipeline
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
   pull_request:
-    branches: [main]
+    branches: [ main ]
 
 jobs:
-  quality:
+  test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
 
-      - name: Install dependencies
-        run: pip install -e ".[dev]"
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install ".[dev]"
 
-      - name: Lint & Format (Ruff)
-        run: |
-          ruff check .
-          ruff format --check .
+    - name: Linting
+      run: |
+        ruff check .
+        ruff format --check .
+        mypy src/
 
-      - name: Type Check (Mypy)
-        run: mypy src/
+    - name: Create .env for CI
+      run: |
+        cat <<EOF > .env
+        PROJECT_NAME="Atlas Test"
+        POSTGRES_USER=atlas
+        POSTGRES_PASSWORD=atlas_pwd
+        POSTGRES_DB=atlas_db
+        POSTGRES_HOST=db
+        POSTGRES_PORT=5432
+        REDIS_HOST=redis
+        REDIS_PORT=6379
+        EOF
 
-      - name: Run Tests
-        run: pytest
+    - name: Start Docker Stack
+      run: docker compose up -d --build
+
+    - name: Wait for API Health
+      run: |
+        echo "Waiting for http://localhost:8000/health..."
+        timeout=30
+        counter=0
+        until curl -s http://localhost:8000/health | grep "ok"; do
+          if [ $counter -ge $timeout ]; then
+            echo "Timeout reached!"
+            docker compose logs api
+            exit 1
+          fi
+          sleep 2
+          counter=$((counter+2))
+        done
+        echo "API is up!"
+
+    - name: Run Tests
+      run: pytest tests/ -v
+
+    - name: Stop Docker Stack
+      if: always()
+      run: docker compose down -v
+
+    - name: Run DB migrations
+      run: |
+        POSTGRES_HOST=localhost alembic upgrade head

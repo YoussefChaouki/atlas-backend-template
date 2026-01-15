@@ -7,6 +7,8 @@ from fastapi import FastAPI
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from atlas_template.api.v1.notes import router as notes_router
+
 # Configuration
 POSTGRES_URL = (
     f"postgresql+asyncpg://{os.getenv('POSTGRES_USER')}:{os.getenv('POSTGRES_PASSWORD')}"
@@ -67,6 +69,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Atlas Template", lifespan=lifespan)
+
+app.include_router(notes_router, prefix="/api/v1/notes", tags=["Notes"])
 
 
 @app.get("/health")
