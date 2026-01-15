@@ -33,7 +33,7 @@ jobs:
         cat <<EOF > .env
         PROJECT_NAME="Atlas Test"
         POSTGRES_USER=atlas
-        POSTGRES_PASSWORD=atlas_pwd
+        POSTGRES_PASSWORD=atlas_password
         POSTGRES_DB=atlas_db
         POSTGRES_HOST=db
         POSTGRES_PORT=5432
@@ -70,3 +70,26 @@ jobs:
     - name: Run DB migrations
       run: |
         POSTGRES_HOST=localhost alembic upgrade head
+
+    - name: Wait for Postgres
+      run: |
+        for i in {1..30}; do
+          if docker compose exec -T db pg_isready -U atlas -d atlas_db; then
+            echo "Postgres ready ✅"
+            exit 0
+          fi
+          echo "Waiting for Postgres... ($i/30)"
+          sleep 2
+        done
+        docker compose logs db
+        exit 1
+
+    - name: Run Alembic migrations
+      env:
+        POSTGRES_USER: atlas
+        POSTGRES_PASSWORD: atlas_password
+        POSTGRES_DB: atlas_db
+        POSTGRES_HOST: localhost
+        POSTGRES_PORT: 5432
+      run: |
+        alembic upgrade head
