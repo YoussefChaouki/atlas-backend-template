@@ -29,7 +29,7 @@ jobs:
           ruff format --check .
           mypy src/
 
-      - name: Create .env for CI
+      - name: Create .env for Docker
         run: |
           cat <<EOF > .env
           PROJECT_NAME="Atlas Test"
@@ -59,9 +59,17 @@ jobs:
           docker compose logs db
           exit 1
 
+      - name: Run DB migrations (runner -> localhost)
+        run: |
+          # Le runner parle à Postgres via le port publié 5432
+          POSTGRES_HOST=localhost alembic upgrade head
+
+      - name: Verify tables exist
+        run: |
+          docker compose exec -T db psql -U atlas -d atlas_db -c "\dt"
+
       - name: Wait for API Health
         run: |
-          echo "Waiting for http://localhost:8000/health..."
           for i in {1..30}; do
             if curl -fsS http://localhost:8000/health | grep -q "ok"; then
               echo "API is up ✅"
@@ -72,10 +80,6 @@ jobs:
           done
           docker compose logs api
           exit 1
-
-      - name: Run DB migrations (inside api container)
-        run: |
-          docker compose exec -T api alembic upgrade head
 
       - name: Run Tests
         run: pytest tests/ -v
