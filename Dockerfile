@@ -7,14 +7,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app/src
 
-# 1. Installation des dépendances (Cache optimisé)
+# 1. Installation des dépendances (Méthode robuste)
 COPY pyproject.toml .
-RUN pip install --no-cache-dir .
-
-# 2. Copie du code source
 COPY src/ ./src/
 
-# Sécurité : User non-root
+# Installation sans cache
+RUN pip install --no-cache-dir .
+
+# 2. Sécurité : User non-root
 RUN useradd -m atlas
 USER atlas
 
