@@ -1,5 +1,6 @@
-from atlas_template.main import app
 from fastapi.testclient import TestClient
+
+from atlas_template.main import app
 
 client = TestClient(app)
 
