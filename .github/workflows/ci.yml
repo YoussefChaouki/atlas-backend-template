@@ -7,27 +7,123 @@ on:
     branches: [main]
 
 jobs:
-  quality:
+  test:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-          cache: 'pip'
+          python-version: "3.11"
+          cache: "pip"
 
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        run: |
+          python -m pip install --upgrade pip
+          pip install ".[dev]"
 
-      - name: Lint & Format (Ruff)
+      - name: Linting
         run: |
           ruff check .
           ruff format --check .
+          mypy src/
 
-      - name: Type Check (Mypy)
-        run: mypy src/
+      - name: Create .env for CI
+        run: |
+          cat <<'EOF' > .env
+          PROJECT_NAME="Atlas Test"
+          POSTGRES_USER=atlas
+          POSTGRES_PASSWORD=atlas_password
+          POSTGRES_DB=atlas_db
+          POSTGRES_HOST=db
+          POSTGRES_PORT=5432
+          REDIS_HOST=redis
+          REDIS_PORT=6379
+          EOF
+
+      - name: Start Docker Stack
+        run: |
+          docker compose up -d --build
+          docker compose ps
+
+      - name: Wait for Postgres readiness
+        run: |
+          echo "Waiting for Postgres..."
+          for i in {1..30}; do
+            if docker compose exec -T db pg_isready -U atlas -d atlas_db >/dev/null 2>&1; then
+              echo "Postgres ready ✅"
+              exit 0
+            fi
+            echo "Waiting for Postgres... ($i/30)"
+            sleep 2
+          done
+          echo "❌ Postgres not ready in time"
+          docker compose logs db --tail=200
+          exit 1
+
+      - name: Run Alembic migrations (with retry)
+        env:
+          POSTGRES_USER: atlas
+          POSTGRES_PASSWORD: atlas_password
+          POSTGRES_DB: atlas_db
+          POSTGRES_PORT: "5432"
+        run: |
+          # Runner -> DB via localhost:5432 (port published by compose)
+          export POSTGRES_HOST=localhost
+
+          echo "Running alembic upgrade head..."
+          for i in {1..8}; do
+            if alembic upgrade head; then
+              echo "Alembic migrations applied ✅"
+              exit 0
+            fi
+            echo "Alembic failed, retrying... ($i/8)"
+            sleep 3
+          done
+
+          echo "❌ Alembic failed after retries"
+          docker compose logs db --tail=200
+          exit 1
+
+      - name: Verify tables exist
+        run: |
+          docker compose exec -T db psql -U atlas -d atlas_db -c "\dt"
+          docker compose exec -T db psql -U atlas -d atlas_db -c "select version();"
+
+      - name: Wait for API health
+        run: |
+          echo "Waiting for API /health..."
+          for i in {1..30}; do
+            if curl -fsS http://localhost:8000/health | grep -q '"ok"'; then
+              echo "API is healthy ✅"
+              exit 0
+            fi
+            echo "Waiting for API... ($i/30)"
+            sleep 2
+          done
+          echo "❌ API not healthy in time"
+          docker compose logs api --tail=200
+          exit 1
 
       - name: Run Tests
-        run: pytest
+        run: |
+          pytest tests/ -v
+
+      - name: Dump logs on failure
+        if: failure()
+        run: |
+          echo "=== docker compose ps ==="
+          docker compose ps
+          echo "=== api logs ==="
+          docker compose logs api --tail=200
+          echo "=== db logs ==="
+          docker compose logs db --tail=200
+          echo "=== redis logs ==="
+          docker compose logs redis --tail=200
+
+      - name: Stop Docker Stack
+        if: always()
+        run: |
+          docker compose down -v
