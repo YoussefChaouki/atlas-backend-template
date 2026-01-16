@@ -2,9 +2,9 @@ name: CI Pipeline
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   test:
@@ -17,6 +17,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
 
       - name: Install dependencies
         run: |
@@ -29,11 +30,10 @@ jobs:
           ruff format --check .
           mypy src/
 
-      - name: Create .env for Docker
+      - name: Create .env for CI
         run: |
-          cat <<EOF > .env
+          cat <<'EOF' > .env
           PROJECT_NAME="Atlas Test"
-          ENVIRONMENT="ci"
           POSTGRES_USER=atlas
           POSTGRES_PASSWORD=atlas_password
           POSTGRES_DB=atlas_db
@@ -44,53 +44,86 @@ jobs:
           EOF
 
       - name: Start Docker Stack
-        run: docker compose up -d --build
-
-      - name: Wait for Postgres
         run: |
+          docker compose up -d --build
+          docker compose ps
+
+      - name: Wait for Postgres readiness
+        run: |
+          echo "Waiting for Postgres..."
           for i in {1..30}; do
-            if docker compose exec -T db pg_isready -U atlas -d atlas_db; then
+            if docker compose exec -T db pg_isready -U atlas -d atlas_db >/dev/null 2>&1; then
               echo "Postgres ready ✅"
               exit 0
             fi
             echo "Waiting for Postgres... ($i/30)"
             sleep 2
           done
-          docker compose logs db
+          echo "❌ Postgres not ready in time"
+          docker compose logs db --tail=200
           exit 1
 
-      - name: Run DB migrations (runner -> localhost)
+      - name: Run Alembic migrations (with retry)
+        env:
+          POSTGRES_USER: atlas
+          POSTGRES_PASSWORD: atlas_password
+          POSTGRES_DB: atlas_db
+          POSTGRES_PORT: "5432"
         run: |
-          # Le runner parle à Postgres via le port publié 5432
-          POSTGRES_HOST=localhost alembic upgrade head
+          # Runner -> DB via localhost:5432 (port published by compose)
+          export POSTGRES_HOST=localhost
+
+          echo "Running alembic upgrade head..."
+          for i in {1..8}; do
+            if alembic upgrade head; then
+              echo "Alembic migrations applied ✅"
+              exit 0
+            fi
+            echo "Alembic failed, retrying... ($i/8)"
+            sleep 3
+          done
+
+          echo "❌ Alembic failed after retries"
+          docker compose logs db --tail=200
+          exit 1
 
       - name: Verify tables exist
         run: |
           docker compose exec -T db psql -U atlas -d atlas_db -c "\dt"
+          docker compose exec -T db psql -U atlas -d atlas_db -c "select version();"
 
-      - name: Wait for API Health
+      - name: Wait for API health
         run: |
+          echo "Waiting for API /health..."
           for i in {1..30}; do
-            if curl -fsS http://localhost:8000/health | grep -q "ok"; then
-              echo "API is up ✅"
+            if curl -fsS http://localhost:8000/health | grep -q '"ok"'; then
+              echo "API is healthy ✅"
               exit 0
             fi
             echo "Waiting for API... ($i/30)"
             sleep 2
           done
-          docker compose logs api
+          echo "❌ API not healthy in time"
+          docker compose logs api --tail=200
           exit 1
 
       - name: Run Tests
-        run: pytest tests/ -v
+        run: |
+          pytest tests/ -v
 
-      - name: Debug logs (only on failure)
+      - name: Dump logs on failure
         if: failure()
         run: |
+          echo "=== docker compose ps ==="
           docker compose ps
+          echo "=== api logs ==="
           docker compose logs api --tail=200
+          echo "=== db logs ==="
           docker compose logs db --tail=200
+          echo "=== redis logs ==="
+          docker compose logs redis --tail=200
 
       - name: Stop Docker Stack
         if: always()
-        run: docker compose down -v
+        run: |
+          docker compose down -v
