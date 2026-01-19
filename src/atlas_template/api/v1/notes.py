@@ -3,7 +3,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from atlas_template.core.database import get_db
 from atlas_template.repositories import notes as repo
-from atlas_template.schemas.notes import NoteCreate, NoteResponse
+from atlas_template.schemas.notes import (
+    NoteCreate,
+    NoteRead,
+    NoteResponse,
+    NoteSearchRequest,
+)
+from atlas_template.services import ai
 
 router = APIRouter()
 
@@ -28,3 +34,25 @@ async def read_note(note_id: int, db: AsyncSession = Depends(get_db)):
             status_code=status.HTTP_404_NOT_FOUND, detail="Note not found"
         )
     return db_note
+
+
+@router.post("/search", response_model=list[NoteRead])
+async def search_notes(
+    search_req: NoteSearchRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Recherche sémantique.
+    """
+    try:
+        query_vector = await ai.get_embedding(search_req.query)
+    except Exception as e:
+        raise HTTPException(
+            status_code=502, detail=f"AI Service Error: {str(e)}"
+        ) from e
+
+    results = await repo.search_similar_notes(
+        db, embedding=query_vector, limit=search_req.k
+    )
+
+    return results

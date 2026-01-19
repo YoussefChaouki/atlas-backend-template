@@ -1,28 +1,45 @@
 from collections.abc import Sequence
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from atlas_template.models import Note
-from atlas_template.schemas.notes import NoteCreate
 
 
-async def create(db: AsyncSession, note_in: NoteCreate) -> Note:
-    """Crée une note en base."""
-    db_note = Note(**note_in.model_dump())
-    db.add(db_note)
-    await db.commit()
-    await db.refresh(db_note)
+async def create(session: AsyncSession, note_in: Any) -> Note:
+    """
+    Crée une note.
+    Accepte un objet Pydantic ou un dict.
+    """
+    data = note_in.model_dump() if hasattr(note_in, "model_dump") else note_in
+    db_note = Note(**data)
+    session.add(db_note)
+    await session.commit()
+    await session.refresh(db_note)
     return db_note
 
 
-async def get_all(db: AsyncSession, skip: int = 0, limit: int = 100) -> Sequence[Note]:
-    """Récupère la liste paginée."""
-    result = await db.execute(select(Note).offset(skip).limit(limit))
+async def get_by_id(session: AsyncSession, note_id: int) -> Note | None:
+    """Récupère une note par son ID."""
+    result = await session.execute(select(Note).where(Note.id == note_id))
+    return result.scalars().first()
+
+
+async def get_all(
+    session: AsyncSession, skip: int = 0, limit: int = 100
+) -> Sequence[Note]:
+    """Récupère toutes les notes avec pagination."""
+    result = await session.execute(select(Note).offset(skip).limit(limit))
     return result.scalars().all()
 
 
-async def get_by_id(db: AsyncSession, note_id: int) -> Note | None:
-    """Récupère une note par son ID."""
-    result = await db.execute(select(Note).where(Note.id == note_id))
-    return result.scalar_one_or_none()
+async def search_similar_notes(
+    session: AsyncSession, embedding: list[float], limit: int = 5
+) -> Sequence[Note]:
+    """
+    Cherche les notes les plus proches par distance cosinus (pgvector).
+    """
+    stmt = select(Note).order_by(Note.embedding.cosine_distance(embedding)).limit(limit)
+    result = await session.execute(stmt)
+    return result.scalars().all()
