@@ -13,6 +13,8 @@ dependencies = [
     "asyncpg>=0.29.0",
     "redis>=5.0.0",
     "alembic>=1.13.0",
+    "openai>=1.0.0",
+    "pgvector>=0.2.0",
 ]
 
 [project.optional-dependencies]
