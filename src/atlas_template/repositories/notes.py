@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from atlas_template.models import Note
@@ -43,3 +43,14 @@ async def search_similar_notes(
     stmt = select(Note).order_by(Note.embedding.cosine_distance(embedding)).limit(limit)
     result = await session.execute(stmt)
     return result.scalars().all()
+
+
+async def update_embedding(
+    session: AsyncSession, note_id: int, embedding: list[float]
+) -> None:
+    """
+    Met à jour uniquement le champ embedding d'une note.
+    """
+    stmt = update(Note).where(Note.id == note_id).values(embedding=embedding)
+    await session.execute(stmt)
+    await session.commit()

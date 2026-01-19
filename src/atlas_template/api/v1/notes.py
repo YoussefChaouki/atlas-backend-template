@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from atlas_template.core.database import get_db
@@ -9,14 +9,22 @@ from atlas_template.schemas.notes import (
     NoteResponse,
     NoteSearchRequest,
 )
-from atlas_template.services import ai
+from atlas_template.services import ai, embeddings
 
 router = APIRouter()
 
 
 @router.post("/", response_model=NoteResponse, status_code=status.HTTP_201_CREATED)
-async def create_note(note: NoteCreate, db: AsyncSession = Depends(get_db)):
-    return await repo.create(db, note)
+async def create_note(
+    note: NoteCreate,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    new_note = await repo.create(db, note)
+
+    background_tasks.add_task(embeddings.process_note_embedding, new_note.id)
+
+    return new_note
 
 
 @router.get("/", response_model=list[NoteResponse])
