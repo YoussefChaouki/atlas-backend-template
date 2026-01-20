@@ -51,7 +51,7 @@ async def check_redis() -> bool:
         r = redis.from_url(REDIS_URL, decode_responses=True)
         await r.ping()
         print(f"Redis OK ({os.getenv('REDIS_HOST')})")
-        await r.aclose()
+        await r.close()
         return True
     except Exception as e:
         print(f"Redis Error: {e}")
@@ -91,3 +91,6 @@ async def health_check():
         "db": "connected",  # Validated by lifespan
         "redis": "connected",  # Validated by lifespan
     }
+
+
+x = 1
