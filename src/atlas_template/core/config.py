@@ -3,6 +3,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Atlas Platform"
+    SECRET_KEY: str = "super-secret-key"
+    ALGORITHM: str = "HS256"
 
     # Database
     POSTGRES_USER: str
@@ -16,6 +18,13 @@ class Settings(BaseSettings):
     REDIS_PORT: int = 6379
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    LOG_LEVEL: str = "INFO"
+    JSON_LOGS: bool = False
+
+    model_config = SettingsConfigDict(
+        env_file=".env", env_ignore_empty=True, extra="ignore"
+    )
 
     @property
     def DATABASE_URL(self) -> str:

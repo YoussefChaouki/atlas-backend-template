@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -8,6 +9,12 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from atlas_template.api.v1.notes import router as notes_router
+from atlas_template.core.config import settings
+from atlas_template.core.logging import setup_logging
+
+# Setup Logging
+setup_logging()
+logger = logging.getLogger(__name__)
 
 # Configuration
 POSTGRES_URL = (
@@ -19,6 +26,7 @@ REDIS_URL = (
 )
 
 
+# Startup and Shutdown Events
 async def wait_for_db(retries: int = 10, delay: int = 1) -> bool:
     """Retry logic to wait for Postgres to be ready."""
     engine = create_async_engine(POSTGRES_URL)
@@ -53,19 +61,20 @@ async def check_redis() -> bool:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup Checks
-    print("🚀 Starting Atlas Platform...")
+    logger.info("Starting Atlas Platform...")
+    logger.info(f"Log Level: {settings.LOG_LEVEL}")
 
     if not await wait_for_db():
-        print("CRITICAL: Could not connect to Postgres. Shutting down.")
+        logger.critical("Could not connect to Postgres. Shutting down.")
         raise RuntimeError("Database connection failed")
 
     if not await check_redis():
-        print("WARNING: Redis not reachable.")
+        logger.warning("Redis not reachable.")
 
     yield
 
     # Shutdown
-    print("Shutting down...")
+    logger.info("Shutting down...")
 
 
 app = FastAPI(title="Atlas Template", lifespan=lifespan)
