@@ -3,8 +3,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Atlas Platform"
-    SECRET_KEY: str = "super-secret-key"
-    ALGORITHM: str = "HS256"
 
     # Database
     POSTGRES_USER: str
@@ -17,19 +15,29 @@ class Settings(BaseSettings):
     REDIS_HOST: str = "redis"
     REDIS_PORT: int = 6379
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
-
+    # Logging
     LOG_LEVEL: str = "INFO"
     JSON_LOGS: bool = False
 
+    # Single model_config for Pydantic settings
     model_config = SettingsConfigDict(
-        env_file=".env", env_ignore_empty=True, extra="ignore"
+        env_file=".env",
+        env_ignore_empty=True,
+        extra="ignore",
     )
 
     @property
     def DATABASE_URL(self) -> str:
-        # asyncpg driver est OBLIGATOIRE
-        return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        """Async PostgreSQL connection string."""
+        return (
+            f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
+            f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        )
+
+    @property
+    def REDIS_URL(self) -> str:
+        """Redis connection string."""
+        return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}"
 
 
 settings = Settings()  # type: ignore[call-arg]
