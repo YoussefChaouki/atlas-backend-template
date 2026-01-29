@@ -1,14 +1,15 @@
-from datetime import datetime
+"""Note model definition."""
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, String
+from sqlalchemy import String
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.sql import func
 
-from atlas_template.core.database import Base
+from atlas_template.models.base import Base, TimestampMixin
 
 
-class Note(Base):
+class Note(Base, TimestampMixin):
+    """Note entity with vector embedding support."""
+
     __tablename__ = "notes"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
@@ -16,7 +17,6 @@ class Note(Base):
     content: Mapped[str] = mapped_column(String)
     is_active: Mapped[bool] = mapped_column(default=True)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(1536), nullable=True)
-    # DateTime avec Timezone obligatoire pour apps sérieuses
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+
+    def __repr__(self) -> str:
+        return f"<Note(id={self.id}, title='{self.title[:20]}...')>"
