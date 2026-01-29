@@ -1,23 +1,24 @@
+"""Database configuration and session management."""
+
 from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.orm import DeclarativeBase
 
 from atlas_template.core.config import settings
+from atlas_template.models.base import Base
 
-# 1. Moteur Async
+# Async Engine
 engine = create_async_engine(settings.DATABASE_URL, echo=False)
 
-# 2. Factory de session
+# Session Factory
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 
-# 3. Classe de base (SQLAlchemy 2.0)
-class Base(DeclarativeBase):
-    pass
-
-
-# 4. Dependency Injection (Typée)
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """Dependency injection for database sessions."""
     async with AsyncSessionLocal() as session:
         yield session
+
+
+# Re-export Base for migrations compatibility
+__all__ = ["Base", "engine", "AsyncSessionLocal", "get_db"]

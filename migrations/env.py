@@ -1,3 +1,5 @@
+"""Alembic environment configuration."""
+
 import asyncio
 import sys
 from logging.config import fileConfig
@@ -9,13 +11,13 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-# Fix Path pour src-layout
+# Fix Path for src-layout
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-# --- IMPORT MODELS ---
+# Import all models to register them with Base.metadata
 import atlas_template.models  # noqa: F401
 from atlas_template.core.config import settings
-from atlas_template.core.database import Base
+from atlas_template.models.base import Base
 
 config = context.config
 
@@ -48,13 +50,8 @@ def do_run_migrations(connection: Connection) -> None:
 
 async def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
-    # 1. Récupère la section config (ou vide si None)
     section = config.get_section(config.config_ini_section) or {}
-
-    # 2. On "cast" brutalement en Dict[str, Any] pour calmer Mypy
-    # Mypy refuse qu'on passe un Dict[str, str] là où on attend Dict[str, Any]
     configuration = cast(dict[str, Any], section)
-
     configuration["sqlalchemy.url"] = settings.DATABASE_URL
 
     connectable = async_engine_from_config(
